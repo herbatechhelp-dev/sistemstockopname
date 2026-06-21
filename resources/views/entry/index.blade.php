@@ -143,4 +143,3 @@
     </div>
     @endif
 </x-layouts.mobile>
-</x-layouts.mobile>
