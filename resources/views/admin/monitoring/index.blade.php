@@ -63,8 +63,8 @@
     {{-- Overall Progress Bar --}}
     <div class="mb-8 bg-white rounded-xl border border-gray-200 p-4">
         <div class="flex justify-between text-sm mb-2">
-            <span class="font-medium text-gray-700">Progress Keseluruhan (Semua Lokasi Gudang)</span>
-            <span class="text-gray-500">{{ $overall['locations_done'] }} / {{ $overall['total_locations'] }} lokasi</span>
+            <span class="font-medium text-gray-700">Progress Keseluruhan (Penyelesaian SO)</span>
+            <span class="text-gray-500">{{ $overall['total_entries'] }} / {{ $overall['target_points'] }} titik hitung</span>
         </div>
         <div class="w-full bg-gray-200 rounded-full h-4">
             <div class="bg-blue-600 h-4 rounded-full transition-all" style="width: {{ min($overall['progress'], 100) }}%"></div>
@@ -94,7 +94,7 @@
                     <span class="text-2xl font-bold {{ $data['progress'] >= 100 ? 'text-green-600' : ($data['progress'] > 0 ? 'text-blue-600' : 'text-gray-400') }}">
                         {{ $data['progress'] }}%
                     </span>
-                    <p class="text-xs text-gray-400">{{ $data['locations_done'] }}/{{ $data['total_locations'] }} lokasi</p>
+                    <p class="text-xs text-gray-400">{{ $data['total_entries'] }}/{{ $data['target_points'] }} titik hitung</p>
                 </div>
             </div>
 

@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\SoSession;
 use App\Models\Team;
 use App\Models\SoEntry;
-use App\Models\Location;
+use App\Models\SessionSnapshot;
 use App\Models\TeamLocationAllocation;
 use Illuminate\Http\Request;
 
@@ -44,6 +44,11 @@ class TeamProgressController extends Controller
                     ->unique()
                     ->count();
 
+                // Target penyelesaian SO tim: kombinasi (item x lokasi alokasi tim) dari snapshot
+                $targetPoints = SessionSnapshot::where('session_id', $session->id)
+                    ->whereIn('location_id', $allocatedLocationIds)
+                    ->count();
+
                 // Get last entry time
                 $lastEntry = $entries->sortByDesc('created_at')->first();
 
@@ -66,28 +71,33 @@ class TeamProgressController extends Controller
                     'total_entries' => $totalEntries,
                     'pending' => $pendingEntries,
                     'verified' => $verifiedEntries,
-                    'progress' => $totalLocations > 0 ? min(100, round(($locationsDone / $totalLocations) * 100)) : 0,
+                    'target_points' => $targetPoints,
+                    'progress' => $targetPoints > 0 ? min(100, round(($totalEntries / $targetPoints) * 100)) : 0,
                     'last_entry_at' => $lastEntry?->created_at,
                     'petugas_stats' => $petugasStats,
                 ];
             });
 
-        // Overall stats — berbasis SEMUA lokasi master (termasuk yang tidak aktif)
-        $allLocationIds = Location::pluck('id');
-        $overallLocationCount = $allLocationIds->count();
+        // Overall stats — penyelesaian SO: entri vs target snapshot (item x lokasi)
+        $totalSnapshots = SessionSnapshot::where('session_id', $session->id)->count();
+        $totalEntries = SoEntry::where('session_id', $session->id)->count();
+
+        // Kartu info lokasi: lokasi teralokasi sesi vs lokasi yang sudah punya entri
+        $allocatedLocations = TeamLocationAllocation::whereHas('team', fn($q) => $q->where('session_id', $session->id));
         $overallDoneLocations = SoEntry::where('session_id', $session->id)
-            ->whereIn('location_id', $allLocationIds)
+            ->whereIn('location_id', $allocatedLocations->pluck('location_id'))
             ->distinct()
             ->count('location_id');
 
         $overall = [
             'total_teams' => $teams->count(),
-            'total_locations' => $overallLocationCount,
+            'total_locations' => $allocatedLocations->count(),
             'locations_done' => $overallDoneLocations,
-            'total_entries' => SoEntry::where('session_id', $session->id)->count(),
+            'total_entries' => $totalEntries,
+            'target_points' => $totalSnapshots,
             'pending' => SoEntry::where('session_id', $session->id)->where('status', 'pending')->count(),
             'verified' => SoEntry::where('session_id', $session->id)->where('status', 'verified')->count(),
-            'progress' => $overallLocationCount > 0 ? min(100, round(($overallDoneLocations / $overallLocationCount) * 100)) : 0,
+            'progress' => $totalSnapshots > 0 ? min(100, round(($totalEntries / $totalSnapshots) * 100)) : 0,
         ];
 
         return view('admin.monitoring.index', compact('session', 'teams', 'overall'));
