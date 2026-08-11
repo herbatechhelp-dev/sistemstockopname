@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\SoSession;
 use App\Models\Team;
 use App\Models\SoEntry;
+use App\Models\Location;
 use App\Models\TeamLocationAllocation;
 use Illuminate\Http\Request;
 
@@ -35,8 +36,13 @@ class TeamProgressController extends Controller
                 $pendingEntries = $entries->where('status', 'pending')->count();
                 $verifiedEntries = $entries->where('status', 'verified')->count();
 
-                // Get unique locations that have entries
-                $locationsDone = $entries->pluck('location_id')->unique()->count();
+                // Get unique locations that have entries AND are still allocated to this team
+                $allocatedLocationIds = $team->locationAllocations->pluck('location_id');
+                $locationsDone = $entries
+                    ->whereIn('location_id', $allocatedLocationIds)
+                    ->pluck('location_id')
+                    ->unique()
+                    ->count();
 
                 // Get last entry time
                 $lastEntry = $entries->sortByDesc('created_at')->first();
@@ -60,24 +66,28 @@ class TeamProgressController extends Controller
                     'total_entries' => $totalEntries,
                     'pending' => $pendingEntries,
                     'verified' => $verifiedEntries,
-                    'progress' => $totalLocations > 0 ? round(($locationsDone / $totalLocations) * 100) : 0,
+                    'progress' => $totalLocations > 0 ? min(100, round(($locationsDone / $totalLocations) * 100)) : 0,
                     'last_entry_at' => $lastEntry?->created_at,
                     'petugas_stats' => $petugasStats,
                 ];
             });
 
-        // Overall stats
-        $overallLocations = TeamLocationAllocation::whereHas('team', fn($q) => $q->where('session_id', $session->id))->count();
-        $overallDoneLocations = SoEntry::where('session_id', $session->id)->select('location_id')->distinct()->count();
+        // Overall stats — berbasis SEMUA lokasi master (termasuk yang tidak aktif)
+        $allLocationIds = Location::pluck('id');
+        $overallLocationCount = $allLocationIds->count();
+        $overallDoneLocations = SoEntry::where('session_id', $session->id)
+            ->whereIn('location_id', $allLocationIds)
+            ->distinct()
+            ->count('location_id');
 
         $overall = [
             'total_teams' => $teams->count(),
-            'total_locations' => $overallLocations,
+            'total_locations' => $overallLocationCount,
             'locations_done' => $overallDoneLocations,
             'total_entries' => SoEntry::where('session_id', $session->id)->count(),
             'pending' => SoEntry::where('session_id', $session->id)->where('status', 'pending')->count(),
             'verified' => SoEntry::where('session_id', $session->id)->where('status', 'verified')->count(),
-            'progress' => $overallLocations > 0 ? round(($overallDoneLocations / $overallLocations) * 100) : 0,
+            'progress' => $overallLocationCount > 0 ? min(100, round(($overallDoneLocations / $overallLocationCount) * 100)) : 0,
         ];
 
         return view('admin.monitoring.index', compact('session', 'teams', 'overall'));

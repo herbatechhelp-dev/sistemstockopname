@@ -11,6 +11,7 @@ use App\Models\Item;
 use App\Models\Location;
 use App\Models\User;
 use App\Models\AuditLog;
+use App\Models\SoEntry;
 use Illuminate\Http\Request;
 
 class SessionController extends Controller
@@ -193,6 +194,14 @@ class SessionController extends Controller
     // Remove allocation
     public function removeAllocation(TeamLocationAllocation $allocation)
     {
+        $hasEntries = SoEntry::where('session_id', $allocation->team->session_id)
+            ->where('location_id', $allocation->location_id)
+            ->exists();
+
+        if ($hasEntries) {
+            return back()->with('error', 'Alokasi lokasi tidak dapat dihapus karena sudah memiliki data entri.');
+        }
+
         $allocation->delete();
         return back()->with('success', 'Alokasi lokasi berhasil dihapus.');
     }

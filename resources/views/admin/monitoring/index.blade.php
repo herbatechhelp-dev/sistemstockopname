@@ -63,11 +63,11 @@
     {{-- Overall Progress Bar --}}
     <div class="mb-8 bg-white rounded-xl border border-gray-200 p-4">
         <div class="flex justify-between text-sm mb-2">
-            <span class="font-medium text-gray-700">Progress Keseluruhan</span>
+            <span class="font-medium text-gray-700">Progress Keseluruhan (Semua Lokasi Gudang)</span>
             <span class="text-gray-500">{{ $overall['locations_done'] }} / {{ $overall['total_locations'] }} lokasi</span>
         </div>
         <div class="w-full bg-gray-200 rounded-full h-4">
-            <div class="bg-blue-600 h-4 rounded-full transition-all" style="width: {{ $overall['progress'] }}%"></div>
+            <div class="bg-blue-600 h-4 rounded-full transition-all" style="width: {{ min($overall['progress'], 100) }}%"></div>
         </div>
     </div>
 
@@ -101,7 +101,7 @@
             {{-- Progress Bar --}}
             <div class="px-5 py-2">
                 <div class="w-full bg-gray-100 rounded-full h-2.5">
-                    <div class="h-2.5 rounded-full transition-all {{ $data['progress'] >= 100 ? 'bg-green-500' : 'bg-blue-500' }}" style="width: {{ $data['progress'] }}%"></div>
+                    <div class="h-2.5 rounded-full transition-all {{ $data['progress'] >= 100 ? 'bg-green-500' : 'bg-blue-500' }}" style="width: {{ min($data['progress'], 100) }}%"></div>
                 </div>
             </div>
 
