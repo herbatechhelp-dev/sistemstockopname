@@ -8,6 +8,7 @@
 
     <form method="POST" action="/entry" id="entry-form" class="space-y-5">
         @csrf
+        <input type="hidden" name="session_id" value="{{ $session->id }}">
 
         {{-- Location Selection --}}
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-5">

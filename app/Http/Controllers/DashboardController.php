@@ -8,6 +8,7 @@ use App\Models\SessionSnapshot;
 use App\Models\Item;
 use App\Models\Location;
 use App\Models\Category;
+use App\Services\SessionContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -15,10 +16,9 @@ class DashboardController extends Controller
 {
     public function index(Request $request)
     {
-        $session = SoSession::where('status', 'active')
-            ->orWhere('status', 'completed')
-            ->orderBy('created_at', 'desc')
-            ->first();
+        $session = SessionContext::adminSelected(
+            $request->has('session_id') ? (int) $request->get('session_id') : null
+        );
 
         if (!$session) {
             return view('dashboard.index', [
@@ -27,6 +27,7 @@ class DashboardController extends Controller
                 'entries' => collect(),
                 'categories' => collect(),
                 'locations' => collect(),
+                'allSessions' => collect(),
             ]);
         }
 
@@ -85,8 +86,9 @@ class DashboardController extends Controller
         $entries = $query->orderBy('created_at', 'desc')->paginate(20)->withQueryString();
         $categories = Category::orderBy('name')->get();
         $locations = Location::orderBy('name')->get();
+        $allSessions = SessionContext::adminOptions();
 
-        return view('dashboard.index', compact('session', 'stats', 'entries', 'categories', 'locations'));
+        return view('dashboard.index', compact('session', 'stats', 'entries', 'categories', 'locations', 'allSessions'));
     }
 
     public function show(SoEntry $entry)

@@ -9,6 +9,7 @@ use App\Models\TeamMember;
 use App\Models\TeamLocationAllocation;
 use App\Models\Item;
 use App\Models\AuditLog;
+use App\Services\SessionContext;
 use Illuminate\Http\Request;
 
 class EntryController extends Controller
@@ -16,13 +17,13 @@ class EntryController extends Controller
     public function index()
     {
         $user = auth()->user();
-        $activeSession = SoSession::where('status', 'active')->first();
+        $activeSession = SessionContext::resolve($user);
 
         if (!$activeSession) {
             return view('entry.index', ['session' => null, 'entries' => collect()]);
         }
 
-        // Get user's team in active session
+        // Get user's team in the selected session
         $team = $this->getUserTeam($user, $activeSession);
         if (!$team) {
             return view('entry.index', ['session' => $activeSession, 'team' => null, 'entries' => collect()]);
@@ -44,15 +45,15 @@ class EntryController extends Controller
     public function create()
     {
         $user = auth()->user();
-        $activeSession = SoSession::where('status', 'active')->first();
+        $activeSession = SessionContext::resolve($user);
 
         if (!$activeSession) {
-            return redirect('/entry')->with('error', 'Tidak ada sesi SO yang aktif.');
+            return redirect('/entry')->with('error', 'Tidak ada sesi SO yang aktif untuk akun Anda.');
         }
 
         $team = $this->getUserTeam($user, $activeSession);
         if (!$team) {
-            return redirect('/entry')->with('error', 'Anda belum dialokasikan ke tim manapun.');
+            return redirect('/entry')->with('error', 'Anda belum dialokasikan ke tim manapun di sesi ini.');
         }
 
         // Get locations allocated to user's team
@@ -71,6 +72,7 @@ class EntryController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
+            'session_id' => 'required|exists:so_sessions,id',
             'location_id' => 'required|exists:locations,id',
             'item_id' => 'required|exists:items,id',
             'batch_code' => 'required|string|max:100',
@@ -84,11 +86,23 @@ class EntryController extends Controller
         }
 
         $user = auth()->user();
-        $activeSession = SoSession::where('status', 'active')->firstOrFail();
+        $activeSession = SoSession::find($data['session_id']);
+
+        if (!$activeSession || $activeSession->status !== 'active') {
+            return back()->with('error', 'Sesi SO tidak aktif.');
+        }
+
+        // Pastikan sesi ini benar-benar terjangkau oleh user
+        if (!SessionContext::activeSessionsFor($user)->contains('id', $activeSession->id)) {
+            return back()->with('error', 'Anda tidak memiliki akses ke sesi tersebut.');
+        }
+
+        SessionContext::set($activeSession->id);
+
         $team = $this->getUserTeam($user, $activeSession);
 
         if (!$team) {
-            return back()->with('error', 'Anda belum dialokasikan ke tim manapun.');
+            return back()->with('error', 'Anda belum dialokasikan ke tim manapun di sesi ini.');
         }
 
         // Verify location belongs to team's allocation

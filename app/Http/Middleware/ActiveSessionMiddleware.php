@@ -5,7 +5,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
-use App\Models\SoSession;
+use App\Services\SessionContext;
 
 class ActiveSessionMiddleware
 {
@@ -15,11 +15,26 @@ class ActiveSessionMiddleware
             return redirect('/login');
         }
 
-        $activeSession = SoSession::where('status', 'active')->first();
+        $user = auth()->user();
 
-        if (!$activeSession) {
-            return redirect('/entry')->withErrors(['session' => 'Tidak ada sesi Stock Opname yang aktif.']);
+        // Admin/superadmin tidak lewat alur ini (dashboard punya dropdown sendiri)
+        if ($user->isAdminOrSuperadmin()) {
+            return $next($request);
         }
+
+        $sessions = SessionContext::activeSessionsFor($user);
+
+        if ($sessions->isEmpty()) {
+            return redirect('/entry')->withErrors(['session' => 'Tidak ada sesi Stock Opname yang aktif untuk akun Anda.']);
+        }
+
+        $selected = SessionContext::resolve($user);
+
+        if (!$selected) {
+            return redirect()->route('session.picker', ['redirect' => $request->path()]);
+        }
+
+        SessionContext::set($selected->id);
 
         return $next($request);
     }

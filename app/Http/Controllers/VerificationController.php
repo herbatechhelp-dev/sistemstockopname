@@ -7,6 +7,7 @@ use App\Models\SoEntryRevision;
 use App\Models\SoSession;
 use App\Models\Team;
 use App\Models\AuditLog;
+use App\Services\SessionContext;
 use Illuminate\Http\Request;
 
 class VerificationController extends Controller
@@ -14,13 +15,13 @@ class VerificationController extends Controller
     public function index()
     {
         $user = auth()->user();
-        $activeSession = SoSession::where('status', 'active')->first();
+        $activeSession = SessionContext::resolve($user);
 
         if (!$activeSession) {
             return view('verification.index', ['session' => null, 'entries' => collect()]);
         }
 
-        // Get team led by this TL
+        // Get team led by this TL in the selected session
         $team = Team::where('session_id', $activeSession->id)
             ->where('team_leader_id', $user->id)
             ->first();
@@ -107,10 +108,10 @@ class VerificationController extends Controller
     public function verifyAll(Request $request)
     {
         $user = auth()->user();
-        $activeSession = SoSession::where('status', 'active')->first();
+        $activeSession = SessionContext::resolve($user);
 
         if (!$activeSession) {
-            return back()->with('error', 'Tidak ada sesi aktif.');
+            return back()->with('error', 'Tidak ada sesi aktif untuk akun Anda.');
         }
 
         $team = Team::where('session_id', $activeSession->id)

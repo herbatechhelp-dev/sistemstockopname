@@ -12,6 +12,7 @@ use App\Models\Location;
 use App\Models\User;
 use App\Models\AuditLog;
 use App\Models\SoEntry;
+use App\Services\SessionContext;
 use Illuminate\Http\Request;
 
 class SessionController extends Controller
@@ -81,14 +82,22 @@ class SessionController extends Controller
         $locationIds = $allocations->pluck('location_id')->unique();
         $items = Item::where('is_active', true)->get();
 
+        // Snapshot = titik hitung nyata: hanya (item x lokasi) dengan stok sistem > 0.
+        // Stok sistem di-generate deterministik per (item, lokasi) agar stabil antar sesi.
+        $created = 0;
         foreach ($items as $item) {
             foreach ($locationIds as $locationId) {
+                $qty = $this->simulatedStock($item->id, $locationId);
+                if ($qty <= 0) {
+                    continue; // item tidak tersedia di lokasi ini → bukan titik hitung
+                }
                 SessionSnapshot::create([
                     'session_id' => $session->id,
                     'item_id' => $item->id,
                     'location_id' => $locationId,
-                    'system_qty' => rand(10, 500), // Simulated system stock
+                    'system_qty' => $qty,
                 ]);
+                $created++;
             }
         }
 
@@ -97,9 +106,22 @@ class SessionController extends Controller
             'started_at' => now(),
         ]);
 
-        AuditLog::log('start_session', SoSession::class, $session->id);
+        AuditLog::log('start_session', SoSession::class, $session->id, null, ['snapshot_points' => $created]);
 
-        return back()->with('success', 'Sesi SO berhasil dimulai. Snapshot stok telah dibuat.');
+        return back()->with('success', "Sesi SO berhasil dimulai. {$created} titik hitung (item x lokasi dengan stok) telah dibuat.");
+    }
+
+    // Stok sistem simulasi yang deterministik per (item, lokasi):
+    // kombinasi sama selalu menghasilkan stok sama, sebagian kombinasi bernilai 0
+    // (item tidak tersimpan di lokasi itu) sehingga tidak menjadi titik hitung.
+    private function simulatedStock(int $itemId, int $locationId): int
+    {
+        $seed = ($itemId * 73856093) ^ ($locationId * 19349663);
+        mt_srand($seed);
+        if (mt_rand(0, 99) < 25) {
+            return 0;
+        }
+        return mt_rand(10, 500);
     }
 
     // Complete session
@@ -221,5 +243,78 @@ class SessionController extends Controller
         }
         $team->delete();
         return back()->with('success', 'Tim berhasil dihapus.');
+    }
+
+    // ===== Multi-session context (Petugas & TL) =====
+
+    public function showPicker(Request $request)
+    {
+        $user = auth()->user();
+        $sessions = SessionContext::activeSessionsFor($user);
+
+        if ($sessions->isEmpty()) {
+            return redirect('/entry')->withErrors(['session' => 'Tidak ada sesi Stock Opname yang aktif untuk akun Anda.']);
+        }
+
+        $selectedId = (int) session()->get('selected_session_id', 0);
+
+        // Jika pilihan lama masih valid, lewati picker
+        if ($selectedId > 0 && $sessions->contains('id', $selectedId)) {
+            return redirect($request->get('redirect', '/entry'));
+        }
+
+        // Ambil informasi tim user di tiap sesi untuk tampilan
+        $items = $sessions->map(function ($session) use ($user) {
+            if ($user->isTeamLeader()) {
+                $team = \App\Models\Team::where('session_id', $session->id)
+                    ->where('team_leader_id', $user->id)
+                    ->first();
+            } else {
+                $membership = \App\Models\TeamMember::where('user_id', $user->id)
+                    ->whereHas('team', fn($q) => $q->where('session_id', $session->id))
+                    ->first();
+                $team = $membership?->team;
+            }
+
+            return [
+                'session' => $session,
+                'team' => $team,
+            ];
+        });
+
+        return view('session-picker', [
+            'items' => $items,
+            'redirect' => $request->get('redirect', '/entry'),
+        ]);
+    }
+
+    public function selectSession(Request $request)
+    {
+        $data = $request->validate([
+            'session_id' => 'required|exists:so_sessions,id',
+            'redirect' => 'nullable|string|max:255',
+        ]);
+
+        $user = auth()->user();
+        $sessions = SessionContext::activeSessionsFor($user);
+
+        if (!$sessions->contains('id', (int) $data['session_id'])) {
+            return back()->with('error', 'Anda tidak memiliki akses ke sesi tersebut.');
+        }
+
+        SessionContext::set((int) $data['session_id']);
+
+        $redirect = $data['redirect'] ?? '/entry';
+        $allowedPrefixes = ['entry', 'verification', 'session'];
+        $path = ltrim($redirect, '/');
+        $safe = in_array(explode('/', $path)[0], $allowedPrefixes, true) ? '/' . $path : '/entry';
+
+        return redirect($safe)->with('success', 'Sesi SO berhasil dipilih.');
+    }
+
+    public function clearSession()
+    {
+        SessionContext::clear();
+        return redirect('/entry');
     }
 }

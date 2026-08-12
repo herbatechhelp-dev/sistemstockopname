@@ -7,19 +7,20 @@ use App\Models\Team;
 use App\Models\SoEntry;
 use App\Models\SessionSnapshot;
 use App\Models\TeamLocationAllocation;
+use App\Services\SessionContext;
 use Illuminate\Http\Request;
 
 class TeamProgressController extends Controller
 {
     public function index(Request $request)
     {
-        // Get latest active or completed session
-        $session = SoSession::whereIn('status', ['active', 'completed'])
-            ->orderBy('created_at', 'desc')
-            ->first();
+        // Sesi terpilih admin: ?session_id= atau sesi active/completed terbaru
+        $session = SessionContext::adminSelected(
+            $request->has('session_id') ? (int) $request->get('session_id') : null
+        );
 
         if (!$session) {
-            return view('admin.monitoring.index', ['session' => null, 'teams' => collect()]);
+            return view('admin.monitoring.index', ['session' => null, 'teams' => collect(), 'overall' => [], 'allSessions' => collect()]);
         }
 
         // Get all teams in this session with their stats
@@ -100,6 +101,8 @@ class TeamProgressController extends Controller
             'progress' => $totalSnapshots > 0 ? min(100, round(($totalEntries / $totalSnapshots) * 100)) : 0,
         ];
 
-        return view('admin.monitoring.index', compact('session', 'teams', 'overall'));
+        $allSessions = SessionContext::adminOptions();
+
+        return view('admin.monitoring.index', compact('session', 'teams', 'overall', 'allSessions'));
     }
 }

@@ -31,23 +31,30 @@ class User extends Authenticatable
         ];
     }
 
-    // Team where this user is the leader
+    // Teams where this user is the leader
     public function ledTeam(): HasOne
     {
         return $this->hasOne(Team::class, 'team_leader_id');
     }
 
-    // Get user's active team (as TL or member)
-    public function getActiveTeam()
+    public function ledTeams(): HasMany
+    {
+        return $this->hasMany(Team::class, 'team_leader_id');
+    }
+
+    // Get user's team in a session (as TL or member)
+    public function getActiveTeam(?int $sessionId = null)
     {
         // If TL, find team where they lead
         if ($this->role === 'team_leader') {
             return Team::where('team_leader_id', $this->id)
+                ->when($sessionId, fn($q) => $q->where('session_id', $sessionId))
                 ->whereHas('session', fn($q) => $q->where('status', 'active'))
                 ->first();
         }
         // If petugas, find team via membership
         $membership = TeamMember::where('user_id', $this->id)
+            ->when($sessionId, fn($q) => $q->where('team_id', Team::select('id')->where('session_id', $sessionId)))
             ->whereHas('team.session', fn($q) => $q->where('status', 'active'))
             ->first();
         return $membership?->team;

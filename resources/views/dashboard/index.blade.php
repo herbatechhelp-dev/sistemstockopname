@@ -13,6 +13,23 @@
         </a>
     </div>
     @else
+    {{-- Session Selector --}}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
+        <form method="GET" class="flex flex-wrap gap-3 items-end">
+            <div class="min-w-[250px] flex-1">
+                <label class="block text-xs text-gray-500 mb-1">Sesi SO</label>
+                <select name="session_id" onchange="this.form.submit()" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    @foreach($allSessions as $s)
+                    <option value="{{ $s->id }}" {{ $session->id == $s->id ? 'selected' : '' }}>
+                        {{ $s->name }} ({{ ucfirst($s->status) }})
+                    </option>
+                    @endforeach
+                </select>
+            </div>
+            <a href="{{ route('sessions.index') }}" class="px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200 transition-colors">Kelola Sesi</a>
+        </form>
+    </div>
+
     {{-- Summary Cards --}}
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow">

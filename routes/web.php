@@ -116,7 +116,7 @@ Route::middleware(['auth', 'role:admin,superadmin'])->group(function () {
 });
 
 // Field Entry (Petugas SO & TL)
-Route::middleware(['auth', 'role:petugas_so,team_leader'])->group(function () {
+Route::middleware(['auth', 'active.session', 'role:petugas_so,team_leader'])->group(function () {
     Route::get('/entry', [EntryController::class, 'index'])->name('entry.index');
     Route::get('/entry/create', [EntryController::class, 'create'])->name('entry.create');
     Route::post('/entry', [EntryController::class, 'store'])->name('entry.store');
@@ -124,12 +124,19 @@ Route::middleware(['auth', 'role:petugas_so,team_leader'])->group(function () {
 });
 
 // Verification (TL only)
-Route::middleware(['auth', 'role:team_leader'])->group(function () {
+Route::middleware(['auth', 'active.session', 'role:team_leader'])->group(function () {
     Route::get('/verification', [VerificationController::class, 'index'])->name('verification.index');
     Route::get('/verification/{entry}', [VerificationController::class, 'show'])->name('verification.show');
     Route::put('/verification/{entry}', [VerificationController::class, 'update'])->name('verification.update');
     Route::post('/verification/{entry}/verify', [VerificationController::class, 'verify'])->name('verification.verify');
     Route::post('/verification/verify-all', [VerificationController::class, 'verifyAll'])->name('verification.verify-all');
+});
+
+// Session context (semua user login)
+Route::middleware(['auth'])->group(function () {
+    Route::get('/session/picker', [SessionController::class, 'showPicker'])->name('session.picker');
+    Route::post('/session/select', [SessionController::class, 'selectSession'])->name('session.select');
+    Route::post('/session/clear', [SessionController::class, 'clearSession'])->name('session.clear');
 });
 
 // API endpoint for item search (admin & field)
