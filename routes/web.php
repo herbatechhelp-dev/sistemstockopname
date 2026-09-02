@@ -139,6 +139,12 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/session/clear', [SessionController::class, 'clearSession'])->name('session.clear');
 });
 
+// Riwayat SO untuk TL & Petugas (Opsi A - menu list SO)
+Route::middleware(['auth', 'role:petugas_so,team_leader'])->group(function () {
+    Route::get('/my-sessions', [\App\Http\Controllers\MySessionController::class, 'index'])->name('my-sessions.index');
+    Route::get('/my-sessions/{session}', [\App\Http\Controllers\MySessionController::class, 'show'])->name('my-sessions.show');
+});
+
 // API endpoint for item search (admin & field)
 Route::middleware(['auth'])->group(function () {
     Route::get('/api/items/search', [ItemController::class, 'search'])->name('api.items.search');

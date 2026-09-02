@@ -54,7 +54,7 @@ class User extends Authenticatable
         }
         // If petugas, find team via membership
         $membership = TeamMember::where('user_id', $this->id)
-            ->when($sessionId, fn($q) => $q->where('team_id', Team::select('id')->where('session_id', $sessionId)))
+            ->when($sessionId, fn($q) => $q->whereHas('team', fn($tq) => $tq->where('session_id', $sessionId)))
             ->whereHas('team.session', fn($q) => $q->where('status', 'active'))
             ->first();
         return $membership?->team;

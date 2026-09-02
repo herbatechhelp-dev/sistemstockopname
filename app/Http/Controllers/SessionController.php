@@ -256,13 +256,6 @@ class SessionController extends Controller
             return redirect('/entry')->withErrors(['session' => 'Tidak ada sesi Stock Opname yang aktif untuk akun Anda.']);
         }
 
-        $selectedId = (int) session()->get('selected_session_id', 0);
-
-        // Jika pilihan lama masih valid, lewati picker
-        if ($selectedId > 0 && $sessions->contains('id', $selectedId)) {
-            return redirect($request->get('redirect', '/entry'));
-        }
-
         // Ambil informasi tim user di tiap sesi untuk tampilan
         $items = $sessions->map(function ($session) use ($user) {
             if ($user->isTeamLeader()) {

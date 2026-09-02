@@ -144,5 +144,8 @@ class DatabaseSeeder extends Seeder
             'value' => 'PT. HBT Indonesia',
             'description' => 'Nama perusahaan',
         ]);
+
+        // Seed multi-sesi demo untuk opsi A (TL & petugas multi-assign)
+        $this->call(MultiSessionSeeder::class);
     }
 }

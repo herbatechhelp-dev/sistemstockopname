@@ -48,13 +48,39 @@
 
     {{-- Verify All --}}
     @if($entries->where('status','pending')->count() > 0)
-    <form method="POST" action="{{ route('verification.verify-all') }}" class="mb-5" onsubmit="return confirm('Verifikasi semua data pending?')">
+    @php $pendingCount = $entries->where('status','pending')->count(); @endphp
+    <form id="verify-all-form" method="POST" action="{{ route('verification.verify-all') }}" class="hidden">
         @csrf
-        <button type="submit" class="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-extrabold rounded-2xl shadow-md shadow-emerald-600/25 hover:shadow-emerald-600/35 active:scale-[0.98] transition-all flex items-center justify-center">
-            <svg class="w-5.5 h-5.5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            VERIFIKASI SEMUA PENDING ({{ $entries->where('status','pending')->count() }})
-        </button>
     </form>
+    <button type="button" onclick="openVerifyModal('verify-all-modal')" class="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-extrabold rounded-2xl shadow-md shadow-emerald-600/25 hover:shadow-emerald-600/35 active:scale-[0.98] transition-all flex items-center justify-center mb-5">
+        <svg class="w-5.5 h-5.5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        VERIFIKASI SEMUA PENDING ({{ $pendingCount }})
+    </button>
+
+    {{-- Popup Konfirmasi Verify All --}}
+    <div id="verify-all-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
+        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onclick="closeVerifyModal('verify-all-modal')"></div>
+        <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 text-left transform transition-all">
+            <div class="flex items-start space-x-3 mb-4">
+                <div class="w-10 h-10 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center shrink-0">
+                    <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </div>
+                <div class="flex-1">
+                    <h3 class="text-base font-extrabold text-slate-900">Verifikasi Semua Pending?</h3>
+                    <p class="text-xs text-slate-500 mt-1 leading-relaxed">
+                        Anda akan memverifikasi <span class="font-bold text-slate-800">{{ $pendingCount }} data pending</span>
+                        milik <span class="font-bold text-emerald-700">{{ $team->name }}</span>
+                        pada sesi <span class="font-bold text-slate-800">{{ $session->name }}</span>.
+                        Data yang sudah diverifikasi <span class="font-bold text-amber-700">tidak dapat diedit kembali</span>.
+                    </p>
+                </div>
+            </div>
+            <div class="flex gap-3 mt-6">
+                <button type="button" onclick="closeVerifyModal('verify-all-modal')" class="flex-1 py-3 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 active:scale-[0.98] transition-all">Batal</button>
+                <button type="button" onclick="submitVerifyForm('verify-all-form','verify-all-modal')" class="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-extrabold rounded-xl shadow-md active:scale-[0.98] transition-all">Ya, Verifikasi</button>
+            </div>
+        </div>
+    </div>
     @endif
 
     {{-- Entry List --}}
@@ -147,6 +173,33 @@
                 });
             });
         }
+
+        function openVerifyModal(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.remove('hidden');
+            el.classList.add('flex');
+            document.body.style.overflow = 'hidden';
+        }
+        function closeVerifyModal(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.add('hidden');
+            el.classList.remove('flex');
+            document.body.style.overflow = '';
+        }
+        function submitVerifyForm(formId, modalId) {
+            const form = document.getElementById(formId);
+            if (!form) return;
+            const btn = document.querySelector('#'+modalId+' button[onclick^="submitVerifyForm"]');
+            if (btn) { btn.disabled = true; btn.textContent = 'Memproses...'; }
+            form.submit();
+        }
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeVerifyModal('verify-all-modal');
+            }
+        });
     </script>
     @endpush
 </x-layouts.mobile>

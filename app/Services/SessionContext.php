@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\SoSession;
 use App\Models\User;
+use App\Models\Team;
+use App\Models\TeamMember;
 use Illuminate\Support\Collection;
 
 class SessionContext
@@ -69,6 +71,43 @@ class SessionContext
     public static function clear(): void
     {
         session()->forget('selected_session_id');
+    }
+
+    /**
+     * Semua sesi (active, completed, closed) yang pernah diikuti user — untuk riwayat.
+     * TL: sesi yang pernah dipimpin, Petugas: sesi dimana jadi anggota.
+     * Diurut terbaru, read-only untuk TL/petugas tetap blind count.
+     */
+    public static function allSessionsFor(User $user): Collection
+    {
+        $query = SoSession::orderBy('created_at', 'desc');
+
+        if ($user->isAdminOrSuperadmin()) {
+            return $query->get();
+        }
+
+        if ($user->isTeamLeader()) {
+            // TL bisa jadi leader di sesi A dan anggota di sesi B → gabung keduanya
+            $ledIds = Team::where('team_leader_id', $user->id)->pluck('session_id');
+            $memberIds = TeamMember::where('user_id', $user->id)
+                ->whereHas('team')
+                ->with('team')
+                ->get()
+                ->pluck('team.session_id');
+            $ids = $ledIds->merge($memberIds)->unique()->filter();
+            if ($ids->isEmpty()) return collect();
+            return SoSession::whereIn('id', $ids)->orderBy('created_at', 'desc')->get();
+        }
+
+        $memberSessionIds = TeamMember::where('user_id', $user->id)
+            ->whereHas('team')
+            ->with('team')
+            ->get()
+            ->pluck('team.session_id')
+            ->unique()
+            ->filter();
+        if ($memberSessionIds->isEmpty()) return collect();
+        return SoSession::whereIn('id', $memberSessionIds)->orderBy('created_at', 'desc')->get();
     }
 
     /**
