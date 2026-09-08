@@ -37,8 +37,7 @@ class SessionContext
 
     /**
      * Sesi aktif terpilih untuk user.
-     * Prioritas: pilihan tersimpan → sesi terbaru (langsung bisa dipakai) → null hanya jika tidak ada sesi.
-     * Semua button navigasi langsung bisa diklik setelah login tanpa harus ke picker dulu.
+     * Prioritas: pilihan tersimpan → satu-satunya sesi aktif → null (perlu picker).
      */
     public static function resolve(User $user): ?SoSession
     {
@@ -57,12 +56,11 @@ class SessionContext
             }
         }
 
-        // Langsung pakai sesi terbaru agar SO Input & Verifikasi bisa diklik langsung setelah login
-        // Picker Ganti Sesi tetap tersedia untuk pindah sesi
-        $first = $sessions->first();
-        // simpan otomatis agar konsisten antar request
-        session()->put('selected_session_id', $first->id);
-        return $first;
+        if ($sessions->count() === 1) {
+            return $sessions->first();
+        }
+
+        return null;
     }
 
     public static function set(int $sessionId): void

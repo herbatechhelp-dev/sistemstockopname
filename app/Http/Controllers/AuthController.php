@@ -56,6 +56,28 @@ class AuthController extends Controller
     private function getRedirectUrl(): string
     {
         $user = Auth::user();
+        if ($user->role === 'team_leader') {
+            $count = \App\Services\SessionContext::activeSessionsFor($user)->count();
+            if ($count > 1) {
+                return '/session/picker';
+            }
+            if ($count === 1) {
+                // simpan otomatis agar langsung bisa ke verifikasi/entry tanpa picker
+                $session = \App\Services\SessionContext::activeSessionsFor($user)->first();
+                session()->put('selected_session_id', $session->id);
+            }
+            return '/verification';
+        }
+        if ($user->role === 'petugas_so') {
+            $count = \App\Services\SessionContext::activeSessionsFor($user)->count();
+            if ($count > 1) {
+                return '/session/picker';
+            }
+            if ($count === 1) {
+                $session = \App\Services\SessionContext::activeSessionsFor($user)->first();
+                session()->put('selected_session_id', $session->id);
+            }
+        }
         return match ($user->role) {
             'superadmin' => '/superadmin/dashboard',
             'admin' => '/dashboard',
