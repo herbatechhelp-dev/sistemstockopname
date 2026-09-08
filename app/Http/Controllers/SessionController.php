@@ -63,7 +63,7 @@ class SessionController extends Controller
         return view('sessions.show', compact('session', 'availableUsers', 'teamLeaders', 'locations', 'items'));
     }
 
-    // Start session - create snapshots
+    // Start session - create snapshots (transaction + source)
     public function start(SoSession $session)
     {
         if ($session->status !== 'draft') {
@@ -74,7 +74,13 @@ class SessionController extends Controller
             return back()->with('error', 'Minimal harus ada 1 tim sebelum sesi dimulai.');
         }
 
-        // Create snapshots for all items at all allocated locations
+        // Jika sudah ada snapshot import, jangan generate simulated (A2)
+        if ($session->snapshots()->where('source', 'import')->exists()) {
+            $session->update(['status' => 'active', 'started_at' => now()]);
+            AuditLog::log('start_session', SoSession::class, $session->id, null, ['snapshot_points' => $session->snapshots()->count(), 'source' => 'import']);
+            return back()->with('success', 'Sesi SO berhasil dimulai dengan snapshot import ('.$session->snapshots()->count().' titik).');
+        }
+
         $allocations = TeamLocationAllocation::whereHas('team', function ($q) use ($session) {
             $q->where('session_id', $session->id);
         })->with('location')->get();
@@ -82,33 +88,157 @@ class SessionController extends Controller
         $locationIds = $allocations->pluck('location_id')->unique();
         $items = Item::where('is_active', true)->get();
 
-        // Snapshot = titik hitung nyata: hanya (item x lokasi) dengan stok sistem > 0.
-        // Stok sistem di-generate deterministik per (item, lokasi) agar stabil antar sesi.
         $created = 0;
-        foreach ($items as $item) {
-            foreach ($locationIds as $locationId) {
-                $qty = $this->simulatedStock($item->id, $locationId);
-                if ($qty <= 0) {
-                    continue; // item tidak tersedia di lokasi ini → bukan titik hitung
+        try {
+            \Illuminate\Support\Facades\DB::transaction(function () use ($session, $items, $locationIds, &$created) {
+                $rows = [];
+                foreach ($items as $item) {
+                    foreach ($locationIds as $locationId) {
+                        $qty = $this->simulatedStock($item->id, $locationId);
+                        if ($qty <= 0) continue;
+                        $rows[] = [
+                            'session_id' => $session->id,
+                            'item_id' => $item->id,
+                            'location_id' => $locationId,
+                            'system_qty' => $qty,
+                            'source' => 'simulated',
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ];
+                        if (count($rows) >= 500) {
+                            SessionSnapshot::insert($rows);
+                            $created += count($rows);
+                            $rows = [];
+                        }
+                    }
                 }
-                SessionSnapshot::create([
-                    'session_id' => $session->id,
-                    'item_id' => $item->id,
-                    'location_id' => $locationId,
-                    'system_qty' => $qty,
-                ]);
-                $created++;
-            }
+                if (!empty($rows)) {
+                    SessionSnapshot::insert($rows);
+                    $created += count($rows);
+                }
+                $session->update(['status' => 'active', 'started_at' => now()]);
+            });
+        } catch (\Exception $e) {
+            return back()->with('error', 'Gagal memulai sesi: '.$e->getMessage());
         }
 
-        $session->update([
-            'status' => 'active',
-            'started_at' => now(),
-        ]);
-
-        AuditLog::log('start_session', SoSession::class, $session->id, null, ['snapshot_points' => $created]);
+        AuditLog::log('start_session', SoSession::class, $session->id, null, ['snapshot_points' => $created, 'source' => 'simulated']);
 
         return back()->with('success', "Sesi SO berhasil dimulai. {$created} titik hitung (item x lokasi dengan stok) telah dibuat.");
+    }
+
+    public function importSnapshot(Request $request, SoSession $session)
+    {
+        if ($session->status !== 'draft') {
+            return back()->with('error', 'Snapshot hanya bisa diimpor saat sesi masih Draft.');
+        }
+        $request->validate(['file' => 'required|file|mimes:xlsx,xls|max:5120']);
+
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($request->file('file')->getRealPath());
+        } catch (\Exception $e) {
+            return back()->with('error', 'File tidak dapat dibaca: '.$e->getMessage());
+        }
+        $sheet = $spreadsheet->getActiveSheet();
+        $rows = $sheet->toArray(null, true, true, true);
+        if (count($rows) < 2) return back()->with('error', 'File kosong atau hanya header.');
+
+        $headerRow = array_shift($rows);
+        $header = array_map(fn($h) => strtolower(trim((string)$h)), array_values($headerRow));
+        // mapping: sku, lokasi, system_qty
+        $aliases = [
+            'sku' => ['sku','kode sku','item sku','kode item'],
+            'lokasi' => ['lokasi','location','nama lokasi','lokasi penyimpanan','location_name'],
+            'qty' => ['system_qty','qty sistem','stok sistem','qty','jumlah','system qty'],
+        ];
+        $map = ['sku'=>null,'lokasi'=>null,'qty'=>null];
+        foreach ($header as $i => $col) {
+            foreach ($aliases as $field => $names) {
+                if (in_array($col, $names) && $map[$field]===null) $map[$field]=$i;
+            }
+        }
+        if ($map['sku']===null || $map['lokasi']===null || $map['qty']===null) {
+            return back()->with('error', 'Format kolom tidak dikenali. Gunakan header: SKU | Lokasi | System_Qty');
+        }
+
+        $locationsByName = Location::all()->keyBy(fn($l)=>strtolower($l->name));
+        $itemsBySku = Item::all()->keyBy(fn($it)=>strtolower($it->sku));
+
+        $imported = 0; $skipped=0; $errors=[];
+        $rowsToInsert=[];
+        $seen = [];
+
+        foreach ($rows as $r) {
+            $vals = array_values($r);
+            if (empty(array_filter($vals, fn($v)=>!empty(trim((string)$v))))) continue;
+            $sku = trim((string)($vals[$map['sku']] ?? ''));
+            $lokasiName = trim((string)($vals[$map['lokasi']] ?? ''));
+            $qtyRaw = $vals[$map['qty']] ?? 0;
+            $qty = is_numeric($qtyRaw) ? (float)$qtyRaw : 0;
+
+            if (!$sku || !$lokasiName) { $skipped++; $errors[]="SKU/Lokasi kosong: ".json_encode($vals); continue; }
+            $item = $itemsBySku[strtolower($sku)] ?? null;
+            $loc = $locationsByName[strtolower($lokasiName)] ?? null;
+            if (!$item) { $skipped++; $errors[]="SKU '{$sku}' tidak ditemukan"; continue; }
+            if (!$loc) { $skipped++; $errors[]="Lokasi '{$lokasiName}' tidak ditemukan"; continue; }
+            if ($qty < 0) { $skipped++; $errors[]="Qty negatif SKU {$sku} lokasi {$lokasiName}"; continue; }
+            $key = $item->id.'-'.$loc->id;
+            if (isset($seen[$key])) { $skipped++; continue; }
+            $seen[$key]=true;
+            if ($qty == 0) continue; // 0 bukan titik hitung
+            $rowsToInsert[] = [
+                'session_id'=>$session->id,
+                'item_id'=>$item->id,
+                'location_id'=>$loc->id,
+                'system_qty'=>$qty,
+                'source'=>'import',
+                'created_at'=>now(),
+                'updated_at'=>now(),
+            ];
+            $imported++;
+            if (count($rowsToInsert)>=500) {
+                SessionSnapshot::insert($rowsToInsert);
+                $rowsToInsert=[];
+            }
+        }
+        if (!empty($rowsToInsert)) SessionSnapshot::insert($rowsToInsert);
+
+        AuditLog::log('import_snapshot', SoSession::class, $session->id, null, ['imported'=>$imported,'skipped'=>$skipped]);
+        $msg = "Import snapshot selesai: {$imported} titik diimpor, {$skipped} dilewati";
+        if (!empty($errors) && count($errors)<=10) $msg .= " | ".implode('; ', array_slice($errors,0,10));
+        return back()->with($imported>0?'success':'error', $msg);
+    }
+
+    public function downloadSnapshotTemplate()
+    {
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Snapshot');
+        $headers = ['SKU','Lokasi','System_Qty'];
+        $sheet->fromArray([$headers], null, 'A1');
+        $sheet->getStyle('A1:C1')->applyFromArray([
+            'font'=>['bold'=>true,'color'=>['rgb'=>'FFFFFF']],
+            'fill'=>['fillType'=>\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,'startColor'=>['rgb'=>'1E40AF']],
+            'alignment'=>['horizontal'=>\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+        ]);
+        $examples = [
+            ['RM-001','Gudang Utama - Blok A - Rak 01',100],
+            ['FG-001','Gudang B - Blok A - Rak 01',50],
+        ];
+        $sheet->fromArray($examples, null, 'A2');
+        $sheet->getColumnDimension('A')->setWidth(15);
+        $sheet->getColumnDimension('B')->setWidth(35);
+        $sheet->getColumnDimension('C')->setWidth(15);
+        $ref = $spreadsheet->createSheet();
+        $ref->setTitle('Referensi');
+        $ref->setCellValue('A1','SKU Tersedia'); $ref->setCellValue('A2','SKU'); $ref->setCellValue('B2','Nama');
+        $r=3; foreach (Item::orderBy('sku')->get() as $it){ $ref->setCellValue("A{$r}",$it->sku); $ref->setCellValue("B{$r}",$it->name); $r++; }
+        $ref->setCellValue('D1','Lokasi Tersedia'); $ref->setCellValue('D2','Nama');
+        $r=3; foreach (Location::orderBy('name')->get() as $loc){ $ref->setCellValue("D{$r}",$loc->name); $r++; }
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $tmp = storage_path('app/template_snapshot.xlsx');
+        $writer->save($tmp);
+        return response()->download($tmp, 'template_snapshot.xlsx')->deleteFileAfterSend(true);
     }
 
     // Stok sistem simulasi yang deterministik per (item, lokasi):
@@ -157,6 +287,9 @@ class SessionController extends Controller
     // Add team to session
     public function addTeam(Request $request, SoSession $session)
     {
+        if ($session->status !== 'draft') {
+            return back()->with('error', 'Tim hanya bisa ditambah saat sesi masih Draft.');
+        }
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'team_leader_id' => 'required|exists:users,id',
@@ -191,6 +324,9 @@ class SessionController extends Controller
     // Allocate location to team
     public function allocateLocation(Request $request, Team $team)
     {
+        if ($team->session->status !== 'draft') {
+            return back()->with('error', 'Alokasi lokasi hanya bisa dilakukan saat sesi masih Draft.');
+        }
         $data = $request->validate([
             'location_id' => 'required|exists:locations,id',
         ]);

@@ -30,13 +30,28 @@
         </form>
     </div>
 
+    {{-- Actions --}}
+    <div class="flex flex-wrap gap-2 mb-4">
+        <a href="{{ route('sessions.export', $session->id) }}" class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700">Export Variance (Excel)</a>
+        @if($session->status==='completed')
+            <form method="POST" action="{{ route('sessions.adjust', $session->id) }}" onsubmit="return confirm('Buat adjustment untuk semua selisih?')">
+                @csrf
+                <button type="submit" class="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700">Buat Adjustment</button>
+            </form>
+        @endif
+        @if(isset($stats['unknown_count']) && $stats['unknown_count']>0)
+            <span class="px-4 py-2 bg-yellow-100 text-yellow-700 rounded-lg text-sm">Tanpa Snapshot: {{ $stats['unknown_count'] }}</span>
+        @endif
+    </div>
+
     {{-- Summary Cards --}}
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow">
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-xs text-gray-500 uppercase tracking-wide">Progress</p>
                     <p class="text-2xl font-bold text-gray-900 mt-1">{{ $stats['total_entries'] }} <span class="text-gray-400 text-base font-normal">/ {{ $stats['total_snapshots'] }}</span></p>
+                    @if(isset($stats['entries_with_snapshot']))<p class="text-xs text-gray-400">Valid: {{ $stats['entries_with_snapshot'] }}</p>@endif
                 </div>
                 <div class="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
                     <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
@@ -82,6 +97,33 @@
                 </div>
             </div>
             <p class="text-xs text-blue-500 mt-2">Fisik &gt; Sistem</p>
+        </div>
+        @if(isset($stats['unknown_count']))
+        <div class="bg-white rounded-xl shadow-sm border border-yellow-200 p-5 hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-yellow-600 uppercase tracking-wide">Unknown</p>
+                    <p class="text-2xl font-bold text-yellow-700 mt-1">{{ $stats['unknown_count'] }}</p>
+                </div>
+                <div class="w-12 h-12 bg-yellow-50 rounded-xl flex items-center justify-center">
+                    <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 0v4m0 0h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </div>
+            </div>
+            <p class="text-xs text-yellow-500 mt-2">Tanpa snapshot</p>
+        </div>
+        @endif
+    </div>
+
+    {{-- Analytics Chart B2 --}}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+        <h3 class="font-semibold text-gray-800 mb-3">Analytics</h3>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div><canvas id="statusChart"></canvas></div>
+            <div><canvas id="categoryChart"></canvas></div>
+        </div>
+        <div class="mt-4">
+            <h4 class="text-sm font-medium text-gray-700">Top 10 Variance Terbesar</h4>
+            <ul id="topVariance" class="text-xs text-gray-600 mt-2 space-y-1"></ul>
         </div>
     </div>
 
@@ -158,4 +200,41 @@
     </div>
     <div class="mt-4">{{ $entries->links() }}
     @endif
+@push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+    const sid = {{ $session? $session->id : 'null' }};
+    if(!sid) return;
+    fetch('/admin/sessions/'+sid+'/export?dummy=0', {method:'HEAD'}).catch(()=>{});
+    fetch('/api/dashboard/stats?session_id='+sid).then(r=>r.json()).then(d=>{
+        if(!d.status_counts) return;
+        const sc = d.status_counts;
+        new Chart(document.getElementById('statusChart'), {
+            type:'doughnut',
+            data:{ labels:['Match','Tolerable','Unacceptable','Unknown'], datasets:[{ data:[sc.match, sc.tolerable, sc.unacceptable, sc.unknown], backgroundColor:['#16a34a','#eab308','#dc2626','#facc15'] }]},
+            options:{ plugins:{ legend:{ position:'bottom' } } }
+        });
+        const cats = d.by_category;
+        const catLabels = Object.keys(cats);
+        new Chart(document.getElementById('categoryChart'), {
+            type:'bar',
+            data:{ labels: catLabels, datasets:[
+                {label:'Match', data: catLabels.map(k=>cats[k].match), backgroundColor:'#16a34a'},
+                {label:'Tolerable', data: catLabels.map(k=>cats[k].tolerable), backgroundColor:'#eab308'},
+                {label:'Unacceptable', data: catLabels.map(k=>cats[k].unacceptable), backgroundColor:'#dc2626'},
+            ]},
+            options:{ responsive:true, scales:{ x:{ stacked:true }, y:{ stacked:true } } }
+        });
+        const topEl = document.getElementById('topVariance');
+        (d.top_variance||[]).forEach(it=>{
+            const li=document.createElement('li');
+            li.textContent=`${it.sku} - ${it.name}: ${it.variance>0?'+':''}${it.variance}`;
+            li.className = it.variance>0?'text-blue-600':'text-red-600';
+            topEl.appendChild(li);
+        });
+    });
+});
+</script>
+@endpush
 </x-layouts.app>

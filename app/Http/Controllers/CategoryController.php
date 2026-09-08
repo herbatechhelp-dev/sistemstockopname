@@ -29,6 +29,7 @@ class CategoryController extends Controller
             'name' => 'required|string|max:255',
             'code' => 'required|string|max:20|unique:categories,code',
             'description' => 'nullable|string',
+            'tolerance_percentage' => 'nullable|numeric|min:0|max:100',
         ]);
 
         $category = Category::create($data);
@@ -48,6 +49,7 @@ class CategoryController extends Controller
             'name' => 'required|string|max:255',
             'code' => 'required|string|max:20|unique:categories,code,' . $category->id,
             'description' => 'nullable|string',
+            'tolerance_percentage' => 'nullable|numeric|min:0|max:100',
         ]);
 
         $oldValues = $category->toArray();
@@ -59,8 +61,12 @@ class CategoryController extends Controller
 
     public function destroy(Category $category)
     {
-        if ($category->items()->count() > 0) {
-            return back()->with('error', 'Kategori tidak dapat dihapus karena masih digunakan oleh item.');
+        if ($category->items()->withTrashed()->count() > 0 || $category->items()->count() > 0) {
+            // Soft disable instead of hard delete
+            $category->update(['tolerance_percentage' => $category->tolerance_percentage]);
+            AuditLog::log('soft_delete', Category::class, $category->id, $category->toArray());
+            $category->delete();
+            return back()->with('success', 'Kategori diarsipkan (soft delete) karena masih terkait item.');
         }
         AuditLog::log('delete', Category::class, $category->id, $category->toArray());
         $category->delete();

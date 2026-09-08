@@ -17,12 +17,19 @@ class AuthController extends Controller
 
     public function login(Request $request)
     {
+        $key = 'login:'.strtolower($request->input('email')).'|'.$request->ip();
+        if (\Illuminate\Support\Facades\RateLimiter::tooManyAttempts($key, 5)) {
+            $secs = \Illuminate\Support\Facades\RateLimiter::availableIn($key);
+            return back()->withErrors(['email' => "Terlalu banyak percobaan. Coba lagi dalam {$secs} detik."]);
+        }
+
         $credentials = $request->validate([
             'email' => 'required|email',
             'password' => 'required',
         ]);
 
         if (Auth::attempt($credentials, false)) {
+            \Illuminate\Support\Facades\RateLimiter::clear($key);
             $request->session()->regenerate();
 
             $user = Auth::user();
@@ -34,6 +41,7 @@ class AuthController extends Controller
             return redirect($this->getRedirectUrl());
         }
 
+        \Illuminate\Support\Facades\RateLimiter::hit($key, 60);
         return back()->withErrors(['email' => 'Email atau password salah.']);
     }
 

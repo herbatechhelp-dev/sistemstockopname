@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SessionSnapshot extends Model
 {
-    protected $fillable = ['session_id', 'item_id', 'location_id', 'system_qty'];
+    protected $fillable = ['session_id', 'item_id', 'location_id', 'system_qty', 'source'];
 
     protected function casts(): array
     {

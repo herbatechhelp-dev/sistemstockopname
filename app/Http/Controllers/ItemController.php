@@ -84,8 +84,11 @@ class ItemController extends Controller
 
     public function destroy(Item $item)
     {
-        if ($item->soEntries()->count() > 0) {
-            return back()->with('error', 'Item tidak dapat dihapus karena sudah digunakan dalam data SO.');
+        if ($item->soEntries()->count() > 0 || $item->snapshots()->count() > 0) {
+            $item->update(['is_active' => false]);
+            AuditLog::log('soft_delete', Item::class, $item->id, $item->toArray());
+            $item->delete();
+            return back()->with('success', 'Item dinonaktifkan & diarsipkan karena sudah digunakan.');
         }
         AuditLog::log('delete', Item::class, $item->id, $item->toArray());
         $item->delete();

@@ -6,10 +6,16 @@
     </div>
 
     {{-- Session Actions --}}
-    <div class="mb-6 flex space-x-3">
+    <div class="mb-6 flex flex-wrap gap-3">
         @if($session->status === 'draft')
         <form method="POST" action="/admin/sessions/{{ $session->id }}/start" onsubmit="return confirm('Mulai sesi ini? Snapshot stok akan dibuat.')">@csrf
-            <button class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">Mulai Sesi</button>
+            <button class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">Mulai Sesi (Simulasi)</button>
+        </form>
+        <a href="{{ route('sessions.snapshot-template', $session->id) }}" class="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-200">Download Template Snapshot</a>
+        <form method="POST" action="{{ route('sessions.import-snapshot', $session->id) }}" enctype="multipart/form-data" class="flex items-center space-x-2 bg-white border rounded-lg px-3 py-2">
+            @csrf
+            <input type="file" name="file" accept=".xlsx,.xls" required class="text-sm">
+            <button type="submit" class="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">Import Snapshot</button>
         </form>
         @endif
         @if($session->status === 'active')

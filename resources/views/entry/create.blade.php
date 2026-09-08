@@ -35,6 +35,19 @@
             @error('batch_code') <p class="text-red-500 text-xs mt-1.5 font-medium">{{ $message }}</p> @enderror
         </div>
 
+        {{-- Barcode Scanner B5 --}}
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-5">
+            <label class="block text-sm font-bold text-slate-700 mb-2">Pindai Barcode <span class="text-xs font-normal text-gray-400">kamera / scanner fisik</span></label>
+            <div class="flex gap-2">
+                <button type="button" id="btn-scan" class="flex-1 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Pindai Barcode
+                </button>
+                <button type="button" id="btn-stop-scan" class="hidden py-3 px-4 bg-red-100 text-red-700 rounded-xl text-sm font-bold">Stop</button>
+            </div>
+            <div id="reader" class="hidden mt-3 rounded-xl overflow-hidden border"></div>
+            <p class="text-xs text-gray-400 mt-2">Atau gunakan scanner fisik (otomatis enter). Scan lokasi akan memilih dropdown lokasi.</p>
+        </div>
+
         {{-- Item Search --}}
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-5">
             <label class="block text-sm font-bold text-slate-700 mb-2">Cari Item</label>
@@ -216,6 +229,45 @@
             btn.disabled = true;
             btn.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-5 w-5 text-white inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>Menyimpan...';
         });
+
+        // Barcode scanner B5: html5-qrcode + hardware scanner
+        let html5QrCode = null;
+        const btnScan = document.getElementById('btn-scan');
+        const btnStop = document.getElementById('btn-stop-scan');
+        const reader = document.getElementById('reader');
+        if(btnScan){
+            btnScan.addEventListener('click', async function(){
+                reader.classList.remove('hidden'); btnStop.classList.remove('hidden'); btnScan.classList.add('hidden');
+                if(!window.Html5Qrcode){ await loadHtml5Qrcode(); }
+                html5QrCode = new Html5Qrcode("reader");
+                html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, onScanSuccess).catch(()=>{ alert('Kamera tidak tersedia'); });
+            });
+            btnStop.addEventListener('click', function(){ if(html5QrCode) html5QrCode.stop().then(()=>{ reader.classList.add('hidden'); btnStop.classList.add('hidden'); btnScan.classList.remove('hidden'); }); });
+        }
+        function loadHtml5Qrcode(){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://unpkg.com/html5-qrcode@2.3.10/html5-qrcode.min.js'; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+        function onScanSuccess(decodedText){
+            handleScanned(decodedText);
+            if(html5QrCode) html5QrCode.stop().then(()=>{ reader.classList.add('hidden'); btnStop.classList.add('hidden'); btnScan.classList.remove('hidden'); });
+        }
+        // hardware scanner (enter suffix)
+        let scanBuffer='';
+        document.addEventListener('keydown', function(e){
+            if(e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA') return;
+            if(e.key==='Enter' && scanBuffer.length>3){ e.preventDefault(); handleScanned(scanBuffer.trim()); scanBuffer=''; }
+            else if(e.key.length===1) scanBuffer+=e.key;
+        });
+        function handleScanned(text){
+            // coba lookup sku
+            fetch(`/api/item-by-sku?sku=${encodeURIComponent(text)}`)
+                .then(r=>r.json()).then(d=>{
+                    if(d.id){ selectItem(d.id, d.name, d.category, d.uom); }
+                    else {
+                        // coba cocok lokasi name
+                        const locSelect=document.getElementById('location_id');
+                        for(let opt of locSelect.options){ if(opt.text.toLowerCase().includes(text.toLowerCase()) || opt.value===text){ locSelect.value=opt.value; break; } }
+                    }
+                }).catch(()=>{});
+        }
     </script>
     @endpush
 </x-layouts.mobile>

@@ -147,5 +147,6 @@ class DatabaseSeeder extends Seeder
 
         // Seed multi-sesi demo untuk opsi A (TL & petugas multi-assign)
         $this->call(MultiSessionSeeder::class);
+        $this->call(ImprovementTestingSeeder::class);
     }
 }

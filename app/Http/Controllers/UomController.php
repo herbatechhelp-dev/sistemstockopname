@@ -58,7 +58,9 @@ class UomController extends Controller
     public function destroy(Uom $uom)
     {
         if ($uom->items()->count() > 0) {
-            return back()->with('error', 'UoM tidak dapat dihapus karena masih digunakan oleh item.');
+            AuditLog::log('soft_delete', Uom::class, $uom->id, $uom->toArray());
+            $uom->delete();
+            return back()->with('success', 'UoM diarsipkan (soft delete) karena masih digunakan item.');
         }
         AuditLog::log('delete', Uom::class, $uom->id, $uom->toArray());
         $uom->delete();

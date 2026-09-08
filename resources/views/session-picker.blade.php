@@ -11,29 +11,22 @@
                 @csrf
                 <input type="hidden" name="session_id" value="{{ $item['session']->id }}">
                 <input type="hidden" name="redirect" value="{{ $redirect }}">
-                <button type="submit" class="w-full text-left bg-white rounded-2xl shadow-sm border border-slate-200/60 p-4 hover:border-blue-400 hover:shadow-md transition-all duration-200">
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center space-x-3">
-                            <div class="w-11 h-11 rounded-xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center shrink-0">
-                                <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
-                            </div>
-                            <div>
-                                <p class="text-sm font-bold text-slate-900">{{ $item['session']->name }}</p>
-                                <p class="text-[11px] text-slate-500 mt-0.5">
-                                    Tim Anda: <span class="font-semibold text-blue-600">{{ $item['team']?->name ?? '-' }}</span>
-                                    @if($item['team']?->leader)
-                                        • TL: {{ $item['team']->leader->full_name ?? $item['team']->leader->name }}
-                                    @endif
-                                </p>
-                                <p class="text-[10px] text-slate-400 mt-0.5">
-                                    Dimulai {{ $item['session']->started_at?->format('d M Y H:i') }}
-                                    @if($item['session']->description)
-                                        • {{ $item['session']->description }}
-                                    @endif
-                                </p>
-                            </div>
+                <button type="submit" class="w-full text-left group relative bg-white rounded-3xl p-5 border border-slate-100/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.05),0_2px_6px_-1px_rgba(15,23,42,0.02)] hover:shadow-[0_10px_25px_-3px_rgba(15,23,42,0.08),0_4px_10px_-2px_rgba(15,23,42,0.04)] active:scale-[0.98] transition-all duration-200 ease-out">
+                    <div class="flex items-center gap-4">
+                        <div class="flex-1 min-w-0 pr-1">
+                            <h2 class="text-base font-bold text-slate-900 leading-snug tracking-tight mb-1 truncate">{{ $item['session']->name }}</h2>
+                            <p class="text-sm font-normal text-slate-600 leading-normal mb-1.5 flex flex-wrap items-center gap-x-1.5">
+                                <span>Tim Anda:</span>
+                                <span class="font-semibold text-blue-600">{{ $item['team']?->name ?? '-' }}</span>
+                                @if($item['team']?->leader)
+                                    <span class="text-slate-400 font-bold text-xs">•</span>
+                                    <span class="text-slate-600">TL: {{ $item['team']->leader->full_name ?? $item['team']->leader->name }}</span>
+                                @endif
+                            </p>
+                            <p class="text-xs text-slate-400 leading-relaxed font-normal line-clamp-2">
+                                Dimulai {{ $item['session']->started_at?->format('d M Y H:i') }} • {{ $item['session']->description ?? 'Tanpa deskripsi' }}
+                            </p>
                         </div>
-                        <svg class="w-5 h-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
                     </div>
                 </button>
             </form>

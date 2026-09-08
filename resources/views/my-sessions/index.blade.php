@@ -4,8 +4,9 @@
         <p class="text-xs text-slate-500 mt-1">Daftar semua Sesi SO yang pernah Anda ikuti — termasuk yang sudah selesai. Tetap blind count, hanya data tim Anda.</p>
     </div>
 
-    {{-- Filter status --}}
-    <div class="flex gap-2 mb-4 overflow-x-auto pb-1">
+    {{-- Filter status — scrollable tanpa scrollbar --}}
+    <style>.no-scrollbar::-webkit-scrollbar{display:none;}</style>
+    <div class="flex gap-2 mb-4 overflow-x-auto pb-1 no-scrollbar" style="scrollbar-width:none; -ms-overflow-style:none;">
         @php $filters = ['' => 'Semua', 'active' => 'Aktif', 'completed' => 'Selesai', 'closed' => 'Ditutup', 'draft' => 'Draft']; @endphp
         @foreach($filters as $val => $label)
             <a href="{{ route('my-sessions.index', $val ? ['status'=>$val] : []) }}"
@@ -29,53 +30,74 @@
                 @php
                     $s = $row['session'];
                     $team = $row['team'];
-                    $badge = match($s->status) {
-                        'active' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                    $badgeClass = match($s->status) {
+                        'active' => 'bg-emerald-50 text-emerald-700 border-emerald-300',
                         'completed' => 'bg-blue-50 text-blue-700 border-blue-200',
                         'closed' => 'bg-slate-100 text-slate-600 border-slate-200',
                         default => 'bg-amber-50 text-amber-700 border-amber-200',
                     };
+                    $dotClass = match($s->status) {
+                        'active' => 'bg-emerald-500 animate-pulse',
+                        'completed' => 'bg-blue-500',
+                        'closed' => 'bg-slate-400',
+                        default => 'bg-amber-500',
+                    };
                 @endphp
-                <a href="{{ route('my-sessions.show', $s) }}" class="block bg-white rounded-2xl shadow-sm border border-slate-200/60 p-4 hover:shadow-md hover:border-blue-200 transition-all">
-                    <div class="flex justify-between items-start mb-2">
-                        <div class="flex-1 min-w-0 pr-2">
-                            <p class="text-sm font-extrabold text-slate-900 truncate">{{ $s->name }}</p>
-                            <p class="text-[11px] text-slate-500 mt-0.5 line-clamp-1">{{ $s->description ?? 'Tanpa deskripsi' }}</p>
-                            <div class="text-[11px] text-slate-500 mt-1 flex flex-wrap items-center gap-1.5">
-                                <span class="font-semibold text-blue-600">{{ $team?->name ?? 'Tanpa tim' }}</span>
-                                @if($team?->leader)
-                                    <span class="text-slate-300">•</span>
-                                    <span>TL: {{ $team->leader->full_name ?? $team->leader->name }}</span>
-                                @endif
+                <a href="{{ route('my-sessions.show', $s) }}" class="block">
+                <article class="bg-white rounded-3xl border border-slate-200/90 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.06),0_2px_6px_-1px_rgba(15,23,42,0.04)] overflow-hidden transition-all duration-200 hover:shadow-lg">
+                    <div class="p-5">
+                        <header class="flex items-start justify-between gap-3 mb-2.5">
+                            <h2 class="text-base font-bold text-slate-900 tracking-tight leading-snug line-clamp-1" title="{{ $s->name }}">{{ $s->name }}</h2>
+                            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border shrink-0 {{ $badgeClass }}">
+                                <span class="w-1.5 h-1.5 rounded-full {{ $dotClass }}"></span>
+                                {{ strtoupper($s->status) }}
+                            </span>
+                        </header>
+                        <p class="text-[13px] text-slate-500 leading-relaxed mb-3.5 line-clamp-2">{{ $s->description ?? 'Tanpa deskripsi' }}</p>
+                        <div class="space-y-1.5 mb-5">
+                            <div class="flex items-center gap-2">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-sm font-semibold text-blue-600 bg-blue-50/70 border border-blue-100">{{ $team?->name ?? 'Tanpa tim' }}</span>
+                                <span class="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                            </div>
+                            @if($team?->leader)
+                            <div class="flex items-center gap-1.5 text-xs font-medium text-slate-500 pl-0.5">
+                                <svg class="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                                <span class="text-slate-600">TL: {{ $team->leader->full_name ?? $team->leader->name }}</span>
+                            </div>
+                            @endif
+                        </div>
+                        <hr class="border-t border-slate-100 mb-4"/>
+                        <div class="grid grid-cols-4 gap-2 bg-slate-50/80 p-3 rounded-2xl border border-slate-100">
+                            <div class="flex flex-col items-center justify-center text-center">
+                                <span class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">ENTRI TIM</span>
+                                <span class="text-lg font-bold text-slate-800 leading-tight mt-1">{{ $row['total_entries_team'] }}</span>
+                            </div>
+                            <div class="flex flex-col items-center justify-center text-center">
+                                <span class="text-[10px] font-bold tracking-wider text-amber-500 uppercase">PENDING</span>
+                                <span class="text-lg font-bold text-amber-600 leading-tight mt-1">{{ $row['pending_team'] }}</span>
+                            </div>
+                            <div class="flex flex-col items-center justify-center text-center">
+                                <span class="text-[10px] font-bold tracking-wider text-emerald-600 uppercase">VERIFIED</span>
+                                <span class="text-lg font-bold text-emerald-600 leading-tight mt-1">{{ $row['verified_team'] }}</span>
+                            </div>
+                            <div class="flex flex-col items-center justify-center text-center pl-1 border-l border-slate-200/80">
+                                <span class="text-[10px] font-bold tracking-wider text-slate-500 uppercase">ENTRI SAYA</span>
+                                <span class="text-lg font-bold text-blue-600 leading-tight mt-1">{{ $row['my_entries'] }}</span>
+                                <span class="text-[10px] text-slate-400 font-medium">{{ $row['allocations_count'] }} lokasi</span>
                             </div>
                         </div>
-                        <span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border {{ $badge }}">{{ $s->status }}</span>
                     </div>
-                    <div class="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
-                        <div class="flex gap-4">
-                            <div class="text-center">
-                                <p class="text-[10px] font-bold text-slate-400 uppercase">Entri Tim</p>
-                                <p class="text-sm font-black text-slate-800">{{ $row['total_entries_team'] }}</p>
-                            </div>
-                            <div class="text-center">
-                                <p class="text-[10px] font-bold text-amber-600 uppercase">Pending</p>
-                                <p class="text-sm font-black text-amber-700">{{ $row['pending_team'] }}</p>
-                            </div>
-                            <div class="text-center">
-                                <p class="text-[10px] font-bold text-emerald-600 uppercase">Verified</p>
-                                <p class="text-sm font-black text-emerald-700">{{ $row['verified_team'] }}</p>
-                            </div>
+                    <footer class="bg-slate-50/50 px-5 py-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                        <div class="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium tracking-tight">
+                            <svg class="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                            <span>Dibuat {{ $s->created_at->format('d M Y') }} @if($s->started_at) • Mulai {{ $s->started_at->format('d M H:i') }} @endif</span>
                         </div>
-                        <div class="text-right">
-                            <p class="text-[10px] text-slate-400 font-bold uppercase">Entri Saya</p>
-                            <p class="text-sm font-black text-blue-700">{{ $row['my_entries'] }}</p>
-                            <p class="text-[10px] text-slate-400">{{ $row['allocations_count'] }} lokasi</p>
-                        </div>
-                    </div>
-                    <div class="flex items-center justify-between mt-2">
-                        <span class="text-[10px] text-slate-400">Dibuat {{ $s->created_at->format('d M Y') }} @if($s->started_at) • Mulai {{ $s->started_at->format('d M H:i') }} @endif</span>
-                        <span class="text-xs font-bold text-blue-600 flex items-center">Detail <svg class="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg></span>
-                    </div>
+                        <span class="inline-flex items-center gap-1 font-semibold text-blue-600 hover:text-blue-700 transition-colors py-1 pl-2 text-[13px] group">
+                            <span>Detail</span>
+                            <svg class="w-3.5 h-3.5 transform transition-transform group-hover:translate-x-0.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path></svg>
+                        </span>
+                    </footer>
+                </article>
                 </a>
             @endforeach
         </div>

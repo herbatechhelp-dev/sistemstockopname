@@ -69,8 +69,10 @@ class LocationController extends Controller
 
     public function destroy(Location $location)
     {
-        if ($location->soEntries()->count() > 0) {
-            return back()->with('error', 'Lokasi tidak dapat dihapus karena sudah digunakan dalam data SO.');
+        if ($location->soEntries()->count() > 0 || $location->snapshots()->count() > 0 || $location->allocations()->count() > 0) {
+            AuditLog::log('soft_delete', Location::class, $location->id, $location->toArray());
+            $location->delete();
+            return back()->with('success', 'Lokasi diarsipkan (soft delete) karena sudah digunakan.');
         }
         AuditLog::log('delete', Location::class, $location->id, $location->toArray());
         $location->delete();

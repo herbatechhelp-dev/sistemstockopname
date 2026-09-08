@@ -75,9 +75,13 @@ class EntryController extends Controller
             'session_id' => 'required|exists:so_sessions,id',
             'location_id' => 'required|exists:locations,id',
             'item_id' => 'required|exists:items,id',
-            'batch_code' => 'required|string|max:100',
-            'fisik_qty' => 'required|numeric|min:0',
+            'batch_code' => 'nullable|string|max:100',
+            'fisik_qty' => ['required','numeric','min:0','regex:/^\d+(\.\d{1,2})?$/'],
             'keterangan' => 'nullable|string',
+        ], [
+            'fisik_qty.regex' => 'Kuantitas fisik maksimal 2 angka di belakang koma.',
+            'fisik_qty.min' => 'Kuantitas fisik tidak boleh kurang dari nol.',
+            'fisik_qty.numeric' => 'Kuantitas fisik harus berupa angka.',
         ]);
 
         // Validate: if qty is 0, keterangan is mandatory
@@ -114,6 +118,33 @@ class EntryController extends Controller
             return back()->with('error', 'Lokasi tidak dialokasikan ke tim Anda.');
         }
 
+        // A3: cegah duplikasi entri (session+lokasi+item+batch) per sesi
+        $dup = SoEntry::where('session_id', $activeSession->id)
+            ->where('location_id', $data['location_id'])
+            ->where('item_id', $data['item_id'])
+            ->when(!empty($data['batch_code']), fn($q) => $q->where('batch_code', $data['batch_code']))
+            ->exists();
+        if ($dup) {
+            return back()->with('error', 'Item dengan batch yang sama sudah diinput di lokasi ini pada sesi ini. Silakan edit entri existing.')->withInput();
+        }
+
+        // A8: idempotency 5 detik (anti double-submit)
+        $recentDup = SoEntry::where('petugas_id', $user->id)
+            ->where('session_id', $activeSession->id)
+            ->where('location_id', $data['location_id'])
+            ->where('item_id', $data['item_id'])
+            ->where('created_at', '>', now()->subSeconds(5))
+            ->exists();
+        if ($recentDup) {
+            return back()->with('error', 'Data yang sama baru saja disimpan. Cegah double-submit.')->withInput();
+        }
+
+        // A5: warning jika snapshot tidak ada (tetap simpan tapi info)
+        $hasSnapshot = \App\Models\SessionSnapshot::where('session_id', $activeSession->id)
+            ->where('item_id', $data['item_id'])
+            ->where('location_id', $data['location_id'])
+            ->exists();
+
         // Get item UoM
         $item = Item::with('uom')->findOrFail($data['item_id']);
 
@@ -138,7 +169,11 @@ class EntryController extends Controller
             'fisik_qty' => $data['fisik_qty'],
         ]);
 
-        return redirect('/entry')->with('success', 'Data hitungan berhasil disimpan.');
+        $msg = 'Data hitungan berhasil disimpan.';
+        if (!$hasSnapshot) {
+            $msg .= ' (Perhatian: item tidak ada di snapshot sistem lokasi ini — variance akan unknown)';
+        }
+        return redirect('/entry')->with('success', $msg);
     }
 
     private function getUserTeam($user, SoSession $session): ?Team

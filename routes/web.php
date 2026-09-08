@@ -12,6 +12,7 @@ use App\Http\Controllers\EntryController;
 use App\Http\Controllers\VerificationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\RecountController;
+use App\Http\Controllers\RecountEntryController;
 use App\Http\Controllers\TeamProgressController;
 use App\Http\Controllers\Superadmin;
 
@@ -96,8 +97,13 @@ Route::middleware(['auth', 'role:admin,superadmin'])->group(function () {
     Route::post('/admin/sessions', [SessionController::class, 'store'])->name('sessions.store');
     Route::get('/admin/sessions/{session}', [SessionController::class, 'show'])->name('sessions.show');
     Route::post('/admin/sessions/{session}/start', [SessionController::class, 'start'])->name('sessions.start');
+    Route::post('/admin/sessions/{session}/import-snapshot', [SessionController::class, 'importSnapshot'])->name('sessions.import-snapshot');
+    Route::get('/admin/sessions/{session}/snapshot-template', [SessionController::class, 'downloadSnapshotTemplate'])->name('sessions.snapshot-template');
     Route::post('/admin/sessions/{session}/complete', [SessionController::class, 'complete'])->name('sessions.complete');
     Route::post('/admin/sessions/{session}/close', [SessionController::class, 'close'])->name('sessions.close');
+    Route::get('/admin/sessions/{session}/export', [DashboardController::class, 'export'])->name('sessions.export');
+    Route::post('/admin/sessions/{session}/adjust', [DashboardController::class, 'adjust'])->name('sessions.adjust');
+    Route::get('/api/dashboard/stats', [DashboardController::class, 'stats'])->name('api.dashboard.stats');
     Route::post('/admin/sessions/{session}/teams', [SessionController::class, 'addTeam'])->name('sessions.add-team');
     Route::post('/admin/teams/{team}/members', [SessionController::class, 'addMember'])->name('teams.add-member');
     Route::post('/admin/teams/{team}/locations', [SessionController::class, 'allocateLocation'])->name('teams.allocate-location');
@@ -119,9 +125,27 @@ Route::middleware(['auth', 'role:admin,superadmin'])->group(function () {
 Route::middleware(['auth', 'active.session', 'role:petugas_so,team_leader'])->group(function () {
     Route::get('/entry', [EntryController::class, 'index'])->name('entry.index');
     Route::get('/entry/create', [EntryController::class, 'create'])->name('entry.create');
-    Route::post('/entry', [EntryController::class, 'store'])->name('entry.store');
+    Route::post('/entry', [EntryController::class, 'store'])->name('entry.store')->middleware('throttle:30,1');
     Route::get('/api/item-by-sku', [EntryController::class, 'getItemBySku'])->name('api.item-sku');
+    Route::get('/recount', [RecountEntryController::class, 'index'])->name('recount.index');
+    Route::get('/recount/{recount}', [RecountEntryController::class, 'show'])->name('recount.show');
+    Route::post('/recount/{recount}/submit', [RecountEntryController::class, 'submit'])->name('recount.submit');
 });
+
+// Notifications (auth)
+Route::middleware(['auth'])->get('/api/notifications/count', function(){
+    $user = auth()->user();
+    $c = \App\Models\RecountRequest::where('assigned_petugas_id', $user->id)->where('status','pending')->count();
+    $pending = 0;
+    if(in_array($user->role, ['team_leader','petugas_so'])){
+        try { $s = \App\Services\SessionContext::resolve($user); } catch(\Exception $e){ $s=null; }
+        if($s){
+            $team = $user->role==='team_leader' ? \App\Models\Team::where('session_id',$s->id)->where('team_leader_id',$user->id)->first() : null;
+            if($team) $pending = \App\Models\SoEntry::where('team_id',$team->id)->where('session_id',$s->id)->where('status','pending')->count();
+        }
+    }
+    return response()->json(['recount_pending'=>$c,'pending_verification'=>$pending]);
+})->name('api.notifications.count.real');
 
 // Verification (TL only)
 Route::middleware(['auth', 'active.session', 'role:team_leader'])->group(function () {

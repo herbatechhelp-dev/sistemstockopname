@@ -11,12 +11,12 @@ class SoEntry extends Model
     protected $fillable = [
         'session_id', 'team_id', 'petugas_id', 'item_id', 'location_id',
         'uom', 'batch_code', 'fisik_qty', 'keterangan', 'status',
-        'ip_address', 'user_agent',
+        'ip_address', 'user_agent', 'parent_entry_id', 'is_recount',
     ];
 
     protected function casts(): array
     {
-        return ['fisik_qty' => 'decimal:2'];
+        return ['fisik_qty' => 'decimal:2', 'is_recount' => 'boolean'];
     }
 
     public function session(): BelongsTo
@@ -77,7 +77,18 @@ class SoEntry extends Model
         $snapshot = $this->getSnapshot();
         if (!$snapshot || $snapshot->system_qty == 0) return 'unacceptable';
         $percentage = abs($variance) / $snapshot->system_qty * 100;
-        $tolerance = (float) (SystemSetting::where('key', 'variance_tolerance_percentage')->value('value') ?? 1);
+        // Toleransi per kategori (A7) fallback ke global setting
+        $catTolerance = null;
+        if ($this->relationLoaded('item') && $this->item && $this->item->relationLoaded('category')) {
+            $catTolerance = $this->item->category->tolerance_percentage;
+        } elseif ($this->item) {
+            $catTolerance = $this->item->category?->tolerance_percentage;
+        }
+        if ($catTolerance !== null && $catTolerance !== '') {
+            $tolerance = (float) $catTolerance;
+        } else {
+            $tolerance = (float) (SystemSetting::where('key', 'variance_tolerance_percentage')->value('value') ?? 1);
+        }
         return $percentage <= $tolerance ? 'tolerable' : 'unacceptable';
     }
 }
